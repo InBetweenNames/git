@@ -1146,7 +1146,7 @@ static void socksetup(struct string_list *listen_addr, int listen_port, struct s
 static int service_loop(struct socketlist *socklist)
 {
 	struct pollfd *pfd;
-	int i;
+	int poll_timeout = -1, i;
 
 	pfd = xcalloc(socklist->nr, sizeof(struct pollfd));
 
@@ -1158,11 +1158,16 @@ static int service_loop(struct socketlist *socklist)
 	signal(SIGCHLD, child_handler);
 
 	for (;;) {
-		int i;
+		int i, ret;
 
 		check_dead_children();
-
-		if (poll(pfd, socklist->nr, -1) < 0) {
+#ifdef NO_POLL
+		poll_timeout = live_children ? 100 : -1;
+#endif
+		ret = poll(pfd, socklist->nr, poll_timeout);
+		if (ret == 0)
+			continue;
+		if (ret < 0) {
 			if (errno != EINTR) {
 				logerror("Poll failed, resuming: %s",
 				      strerror(errno));
