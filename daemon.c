@@ -834,9 +834,10 @@ static struct child {
 	struct child *next;
 	struct child_process cld;
 	struct sockaddr_storage address;
+	int connection;
 } *firstborn;
 
-static void add_child(struct child_process *cld, struct sockaddr *addr, socklen_t addrlen)
+static void add_child(struct child_process *cld, struct sockaddr *addr, socklen_t addrlen, int connection)
 {
 	struct child *newborn, **cradle;
 
@@ -844,6 +845,7 @@ static void add_child(struct child_process *cld, struct sockaddr *addr, socklen_
 	live_children++;
 	memcpy(&newborn->cld, cld, sizeof(*cld));
 	memcpy(&newborn->address, addr, addrlen);
+	newborn->connection = connection;
 	for (cradle = &firstborn; *cradle; cradle = &(*cradle)->next)
 		if (!addrcmp(&(*cradle)->address, &newborn->address))
 			break;
@@ -888,6 +890,7 @@ static void check_dead_children(void)
 			*cradle = blanket->next;
 			live_children--;
 			child_process_clear(&blanket->cld);
+			close(blanket->connection);
 			free(blanket);
 		} else
 			cradle = &blanket->next;
@@ -928,13 +931,13 @@ static void handle(int incoming, struct sockaddr *addr, socklen_t addrlen)
 	}
 
 	cld.argv = cld_argv.argv;
-	cld.in = incoming;
+	cld.in = dup(incoming);
 	cld.out = dup(incoming);
 
 	if (start_command(&cld))
 		logerror("unable to fork");
 	else
-		add_child(&cld, addr, addrlen);
+		add_child(&cld, addr, addrlen, incoming);
 }
 
 static void child_handler(int signo)
